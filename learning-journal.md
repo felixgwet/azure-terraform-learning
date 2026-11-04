@@ -1,4 +1,4 @@
-# Building an Azure Environment with Terraform: Lessons 1 and 2
+# Building an Azure Environment with Terraform
 
 Building a complete Azure environment with Terraform, documented as I go. These lessons start with the core building blocks of a Terraform config and build up to the network skeleton that everything else will live in.
 
@@ -42,6 +42,8 @@ resource "azurerm_resource_group" "main" {
 
 Tags are basically sticky notes on the resource. Useful later for filtering and cost tracking.
 
+![main.tf in VS Code](lesson1-main-tf.png)
+
 ## Lesson 2: terraform init and plan
 
 Launched Terraform with terraform init in the VS Code terminal. init downloads the azurerm plugin (the translator from lesson 1) and sets up the working directory. Nothing touches Azure yet.
@@ -77,6 +79,8 @@ The environment and managedby tags come through exactly as I wrote them. Sticky 
 
 Ran terraform apply. It shows the same plan again, asks you to confirm, and then actually does it. Typed yes, and the resource group was created.
 
+![terraform apply in the VS Code terminal](lesson3-terraform-apply.png)
+
 New files showed up in the folder after this, including terraform.tfstate. That one deserves its own notes, so it's the next lesson.
 
 Then I went to the Azure portal to see it with my own eyes. rg-terraform-learn is there, sitting in UK South, exactly the name from my code. The main nickname stayed behind in Terraform, like it should.
@@ -86,6 +90,8 @@ The tags came through as well: Environment: learning and ManagedBy: terraform, b
 No resources inside it yet, which is right. A resource group is just the container, and I haven't told Terraform to put anything in it. That's the next step.
 
 One thing that clicked here: the plan said the id was "(known after apply)", and now the group exists with a real Azure-generated ID. That's the apply doing its job, turning the plan into something real.
+
+![rg-terraform-learn in the Azure portal](lesson3-azure-portal.png)
 
 ## Lesson 4: the state file, Terraform's memory
 
@@ -136,6 +142,8 @@ Reading one of these back:
 
 The boxes are defined, but main.tf still has the hard-coded values in it. Next step is swapping them out for references to the boxes, so the resource group reads its name and location from variables instead of strings I typed by hand.
 
+![variables.tf alongside main.tf in VS Code](lesson5-variables.png)
+
 ## Lesson 6: reaching into the boxes
 
 Did the swap. Edited the resource block in main.tf so it reaches into the boxes instead of holding hard-coded values. The resource group now reads like this:
@@ -157,6 +165,8 @@ The syntax is var.thelabel. So var.resource_group_name means "whatever is in the
 One I deliberately left alone: ManagedBy = "terraform" stays hard-coded. That value should never change, everything in this project is managed by Terraform by definition, so there's no box needed for it. Boxes are for values that might change or get reused, not for constants.
 
 Worth noting: no quotes around the var references. "var.location" in quotes would be the literal text, var.location without quotes is the box lookup.
+
+![main.tf using var references](lesson6-var-references.png)
 
 ## Lesson 7: outputs, or the receipt
 
@@ -185,6 +195,8 @@ Breaking that down:
 - `.id` is which attribute I want off it. Could just as easily be .name, .location, .tags, whatever the resource has
 
 I added a second receipt line for the location too, cheap to do and handy to see. After the next apply, both print to the terminal, and I can pull them up again any time with terraform output.
+
+![outputs.tf and variables.tf in VS Code](lesson7-outputs.png)
 
 ## Lesson 8: the network skeleton
 
@@ -223,6 +235,8 @@ What it does:
 
 One inconsistency I've spotted in my own code: the VNet name is hard-coded ("vnet-terraform-learn") while the location comes from a box. Lesson 5 me would say that name belongs in variables.tf. Leaving it for now, but noting it.
 
+![network.tf in VS Code](lesson8-network.png)
+
 ## Lesson 9: the first failure, resource provider not registered
 
 Ran the apply for the network skeleton and it failed. First proper error of the project. The VNet wouldn't create because my Microsoft network switch was off, Azure's words were "the resource provider isn't registered".
@@ -233,7 +247,7 @@ The error signature to recognise: **409 MissingSubscriptionRegistration**.
 
 The fix is a one-time command, flick the switch for networking:
 
-```powershell
+```
 az provider register --namespace Microsoft.Network
 ```
 
