@@ -1,6 +1,6 @@
 variable "location" {
   type        = string
-  default     = "uksouth"
+  default     = "ukwest"
   description = "Which Azure region everything goes in"
 }
 
