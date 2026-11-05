@@ -16,15 +16,26 @@ terraform {
 
 provider "azurerm" {
   features {}
-  subscription_id = "PASTE-YOUR-SUBSCRIPTION-ID-HERE"
+  subscription_id = "0e6b9288-bfc7-47f4-8186-226642c72051"
 }
 
-resource "azurerm_resource_group" "main" {
-  name     = var.resource_group_name
-  location = var.location
 
-  tags = {
-    Environment = var.environment
-    ManagedBy   = "terraform"
-  }
+module "dev" {
+  source = "./modules/environment"
+
+  environment     = "dev"
+  vnet_cidr       = "10.0.0.0/16"
+  web_subnet_cidr = "10.0.1.0/24"
+  db_subnet_cidr  = "10.0.2.0/24"
+  vm_size         = "Standard_D2als_v7"
+}
+
+module "prod" {
+  source = "./modules/environment"
+
+  environment     = "prod"
+  vnet_cidr       = "10.1.0.0/16"
+  web_subnet_cidr = "10.1.1.0/24"
+  db_subnet_cidr  = "10.1.2.0/24"
+  vm_size         = "Standard_D2als_v7"
 }

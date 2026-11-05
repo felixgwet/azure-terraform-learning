@@ -1,13 +1,44 @@
+resource "azurerm_resource_group" "main" {
+  name     = "rg-${var.environment}"
+  location = var.location
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "azurerm_virtual_network" "main" {
+  name                = "vnet-${var.environment}"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  address_space       = [var.vnet_cidr]
+}
+
+resource "azurerm_subnet" "web" {
+  name                 = "web"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.web_subnet_cidr]
+}
+
+resource "azurerm_subnet" "database" {
+  name                 = "database"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.main.name
+  address_prefixes     = [var.db_subnet_cidr]
+}
+
 resource "azurerm_public_ip" "vm" {
-  name                = "pip-terraform-learn"
-  location            = var.location
+  name                = "pip-${var.environment}"
+  location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   allocation_method   = "Static"
 }
 
 resource "azurerm_network_security_group" "web" {
-  name                = "nsg-web"
-  location            = var.location
+  name                = "nsg-web-${var.environment}"
+  location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
   security_rule {
@@ -24,8 +55,8 @@ resource "azurerm_network_security_group" "web" {
 }
 
 resource "azurerm_network_interface" "vm" {
-  name                = "nic-terraform-learn"
-  location            = var.location
+  name                = "nic-${var.environment}"
+  location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
   ip_configuration {
@@ -42,10 +73,10 @@ resource "azurerm_network_interface_security_group_association" "vm" {
 }
 
 resource "azurerm_linux_virtual_machine" "main" {
-  name                  = "vm-terraform-learn"
-  location              = var.location
+  name                  = "vm-${var.environment}"
+  location              = azurerm_resource_group.main.location
   resource_group_name   = azurerm_resource_group.main.name
-  size                  = "Standard_D2als_v7"
+  size                  = var.vm_size
   admin_username        = "azureuser"
   network_interface_ids = [azurerm_network_interface.vm.id]
 
@@ -65,8 +96,4 @@ resource "azurerm_linux_virtual_machine" "main" {
     sku       = "server"
     version   = "latest"
   }
-}
-output "vm_public_ip" {
-  value       = azurerm_public_ip.vm.ip_address
-  description = "The public IP of the VM - this is what you SSH to"
 }

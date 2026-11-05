@@ -1,9 +1,9 @@
-output "resource_group_id" {
-  value       = azurerm_resource_group.main.id
-  description = "The full Azure ID of the resource group"
+output "dev_vm_ip" {
+  value       = module.dev.vm_public_ip
+  description = "Public IP of the dev environment VM"
 }
 
-output "resource_group_location" {
-  value       = azurerm_resource_group.main.location
-  description = "Where the resource group lives"
+output "prod_vm_ip" {
+  value       = module.prod.vm_public_ip
+  description = "Public IP of the prod environment VM"
 }

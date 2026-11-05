@@ -531,3 +531,102 @@ The key line is just the filename the notebook gets inside the container: lesson
 Hygiene note for future me: the tfstate contains real resource IDs and can contain secrets, which is why it never goes in git. Now it does not even live next to the code.
 
 That is roadmap item 5 done: remote state and locking, what real teams use. Next up: the SQL database on the database street from lesson 8 (the one that only accepts traffic from web), or item 6, modules and environments.
+
+## Lesson 18: one factory, two environments (modules)
+
+Roadmap item 6. The idea: a module is just a folder of .tf files that takes inputs as variables and hands back outputs. The special part is you can call the same folder twice with different inputs. So I made a modules folder, and inside it an environment folder with three files: main.tf, variables.tf, outputs.tf.
+
+![the new folder layout, module living inside the root](lesson18-folder-tree.png)
+
+**variables.tf, the dials.** Anything that should differ between dev and prod becomes a variable here: the environment name, the location, the VM size, and the three address ranges (vnet, web subnet, database subnet). Six dials in total. And notice vm_size sitting there: VM size finally became a variable, the thing I have wanted since the great SKU hunt of lesson 15.
+
+![the module's dials](lesson18-module-variables.png)
+
+**outputs.tf, the windows.** If the module is a black box, the outputs are little windows where it hands results back. "Here is the IP I built for you", that kind of thing. Without these, the root code cannot see inside.
+
+![the module's windows](lesson18-module-outputs.png)
+
+**main.tf, the blueprint.** The biggest piece. I merged the old network.tf and compute.tf and the resource group block into one file inside the module. This file is the answer to the question "what does one environment consist of?" A resource group, a VNet with a web street and a database street, a Network Security Group that only allows port 22, a public IP, a NIC, and a VM with key-only login. It is a single place where "how we build an environment at this company" is written down.
+
+This matters because the one file gets used twice. Fix the firewall rule once, dev and prod both get the fix. Add monitoring once, dev and prod both get monitoring. Next project needs an environment, they use the same factory. Without this, the knowledge has to be copy-pasted into every folder.
+
+The summary I keep in my head: variables.tf is the questions, main.tf is the machine that builds the answer, outputs.tf is the receipt. main.tf is the part that makes a module a module, the other two are just its front door and its letterbox.
+
+![the blueprint, one file describing one whole environment](lesson18-module-main.png)
+
+**Calling the factory twice.** Back in the root main.tf, the old resources get replaced by two module blocks:
+
+```hcl
+module "dev" {
+  source = "./modules/environment"
+
+  environment     = "dev"
+  vnet_cidr       = "10.0.0.0/16"
+  web_subnet_cidr = "10.0.1.0/24"
+  db_subnet_cidr  = "10.0.2.0/24"
+  vm_size         = "Standard_D2als_v7"
+}
+
+module "prod" {
+  source = "./modules/environment"
+
+  environment     = "prod"
+  vnet_cidr       = "10.1.0.0/16"
+  web_subnet_cidr = "10.1.1.0/24"
+  db_subnet_cidr  = "10.1.2.0/24"
+  vm_size         = "Standard_D2als_v7"
+}
+```
+
+![both module blocks sitting in the root main.tf](lesson18-root-main-modules.png)
+
+Then terraform init again, because Terraform needs to install the new module into .terraform.
+
+**The debugging, or why the plan number is a clue.** The maths first: one environment is 9 resources (resource group, VNet, two subnets, public IP, Network Security Group, the association, the NIC, the VM), so two environments should plan as 18 to add. Do not assume it is right if it is not. Double check.
+
+- First run said 9. One module block never made it into the file. Still not sure how, probably a paste that never landed or an unsaved buffer. Either way the plan number snitched: 9 means one environment, not two.
+- Fixed that, ran again, and now it said 27. Threw me off until I counted: 18 new from the modules, plus 9 old, because network.tf and compute.tf were still sitting in the root. Deleted both, their contents live safely inside the module now. The rule: when code moves into a module, delete the original, otherwise you are running the old design and the new design side by side. One job, one owner.
+- Also deleted the old resource group block from the root main.tf, since it lives in the module now too.
+- Then the root outputs.tf was still holding old receipts pointing at azurerm_resource_group.main.id and friends. Those addresses only work when the resource lives in the same folder. Replaced them so the receipts reach through the module windows:
+
+```hcl
+output "dev_vm_ip" {
+  value       = module.dev.vm_public_ip
+  description = "Public IP of the dev environment VM"
+}
+
+output "prod_vm_ip" {
+  value       = module.prod.vm_public_ip
+  description = "Public IP of the prod environment VM"
+}
+```
+
+module.dev.vm_public_ip reads as: the vm_public_ip receipt that the dev stamp printed.
+
+![the old receipts, struck through](lesson18-old-outputs.png)
+
+![the new receipts, reaching through the module windows](lesson18-new-outputs.png)
+
+And then, finally: Plan: 18 to add, 0 to change, 0 to destroy. As desired.
+
+![18 to add, the correct number](lesson18-plan-18.png)
+
+**Apply.** terraform apply builds both environments in parallel. When it finished, the receipts printed dev_vm_ip and prod_vm_ip (masked here, they are real public addresses).
+
+![apply complete, 18 added, both receipts printed](lesson18-apply-receipts.png)
+
+**Portal check.** rg-dev and rg-prod both exist in UK West now, sitting next to rg-terraform-state from lesson 17.
+
+![both environment resource groups in the list](lesson18-portal-rgs.png)
+
+Each one holds a full stack: NIC, Network Security Group, public IP, VM, disk, VNet. Identical in both. And vnet-prod shows address space 10.1.0.0/16, exactly what the prod module block ordered.
+
+![the dev stack, full house, subscription ID masked](lesson18-rg-dev.png)
+
+![vnet-prod wearing the prod address range, subscription ID masked](lesson18-vnet-prod.png)
+
+One thing the portal taught me: portal rows are not Terraform resources. Six rows showed per resource group, but Terraform tracked 9 resources per environment. The subnets hide inside the VNet, the NSG association is invisible, and the VM's disk appears as a bonus row.
+
+Tonight I learned modules. A module is just a folder of .tf files with inputs (variables.tf) and outputs (outputs.tf), and main.tf is the blueprint itself. Writing the code does nothing, only apply builds. The win: dev and prod now come from one design, so they can never drift apart, because they are stamped from the same cutter. Six dials control everything: name, location, VM size, and three address ranges. Adding a third environment like staging would take 8 lines and 30 seconds now, not an evening. We will try that later. And my favourite part was the debugging: each time the count was wrong, the plan number itself was the clue, because Terraform counts every resource in every .tf file, so a wrong number always tells you something true about what is really in play.
+
+That is roadmap item 6 done. Remaining: the SQL database on the database street, tightening that port 22 rule down to my home IP (promised back in lesson 10), the rest of item 7 governance (tags are in already, Key Vault and RBAC to go), and item 8, running Terraform from a pipeline.

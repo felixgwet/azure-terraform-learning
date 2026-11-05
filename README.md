@@ -4,30 +4,28 @@ Hands-on learning project: building a complete Azure environment with Terraform 
 
 ## What's built so far
 
-- **Resource group** (`azurerm_resource_group`) — the container for everything
-- **Virtual network** (`azurerm_virtual_network`, `10.0.0.0/16`) with two subnets:
-  - `web` — `10.0.1.0/24`
-  - `database` — `10.0.2.0/24`
-- **Linux VM** (`azurerm_linux_virtual_machine`, Ubuntu 24.04 LTS) in the `web` subnet, with its supporting pile:
-  - Public IP (`azurerm_public_ip`) — the front door address
-  - Network interface (`azurerm_network_interface`) — the cable into the subnet
-  - Network security group (`azurerm_network_security_group`) — one rule only: SSH on port 22
-  - NIC/NSG association — the firewall clips onto the cable, not the VM
+- **Reusable module** (`modules/environment`) — one parameterised blueprint for a whole environment, stamped out twice:
+  - `dev` (VNet `10.0.0.0/16`) and `prod` (VNet `10.1.0.0/16`), each in its own resource group
+  - Inputs: environment name, location, VM size, VNet/subnet CIDR ranges
+- **Per environment** the module builds:
+  - Resource group with environment tagging
+  - Virtual network with two subnets (`web` and `database`)
+  - Ubuntu 24.04 VM in the `web` subnet, with its supporting pile: public IP, network interface, network security group (SSH/22 only), NIC/NSG association
   - SSH key auth only (`ed25519`), password login disabled
 - **Remote state** — `terraform.tfstate` lives in Azure Storage (`backend "azurerm"`) with blob lease locking, migrated from local state
-- **Variables** (`variables.tf`) for location, naming and environment tag
-- **Outputs** (`outputs.tf`) printing the resource group ID, location and VM public IP after apply
+- **Outputs** printing the dev and prod VM public IPs after apply
 
 ## File layout
 
 | File | Purpose |
 |---|---|
-| `main.tf` | Provider config, remote state backend + resource group |
-| `variables.tf` | Input variables (the labelled boxes) |
-| `outputs.tf` | Values printed after apply (the receipt) |
-| `network.tf` | VNet and subnets |
-| `compute.tf` | The VM and everything it needs to exist (public IP, NSG, NIC, association) |
-| `learning-journal.md` | Full build journal, lessons 1–17 with screenshots |
+| `main.tf` | Provider config, remote state backend, and the two `module` calls (dev + prod) |
+| `variables.tf` | Root input variables |
+| `outputs.tf` | Receipts: dev and prod VM public IPs |
+| `modules/environment/main.tf` | The blueprint: RG, VNet, subnets, VM stack |
+| `modules/environment/variables.tf` | The module's dials (environment, location, vm_size, CIDRs) |
+| `modules/environment/outputs.tf` | The module's receipts (VM IP, RG name) |
+| `learning-journal.md` | Full build journal with screenshots |
 | `lesson1-terraform-fundamentals.md` | Standalone notes: lesson 1 |
 | `lesson2-terraform-init-and-plan.md` | Standalone notes: lesson 2 |
 | `app/index.html` | The full journal as a single readable web page |
@@ -37,7 +35,7 @@ Hands-on learning project: building a complete Azure environment with Terraform 
 ```powershell
 az login
 terraform init
-terraform plan
+terraform plan    # expect 18 resources: the 9-piece stack, stamped twice
 terraform apply
 terraform destroy   # when done - the code is the real thing, resources are disposable
 ```
@@ -45,9 +43,11 @@ terraform destroy   # when done - the code is the real thing, resources are disp
 ## Lessons learned so far
 
 - `init -> plan -> apply -> destroy` is the core loop
-- Read the plan summary line before every apply (`X to add, Y to change, Z to destroy`)
-- Resource references (`azurerm_resource_group.main.name`) wire resources together; Terraform derives build order from them
+- Read the plan summary line before every apply (`X to add, Y to change, Z to destroy`) — a wrong number always tells you what's really in play
+- Resource references (`azurerm_subnet.web.id`) wire resources together; Terraform derives build order from them
 - The state file is Terraform's memory — never edit or commit it; remote state in Azure Storage adds locking via blob leases
+- A module is just a folder of .tf files with inputs and outputs: variables.tf = the questions, main.tf = the blueprint, outputs.tf = the receipts
+- Moving resources into a module breaks direct references — root must read them via `module.<name>.<output>`
 - azurerm provider 5.x does not auto-register Azure resource providers: `409 MissingSubscriptionRegistration` means run `az provider register --namespace Microsoft.X` once per subscription
 - Always read the error code after the HTTP status: `409 MissingSubscriptionRegistration` (provider switch off), `409 SkuNotAvailable` (size out of stock) and `400 InvalidParameter` (typo) need three different fixes
 - Trial subscriptions are blocked from many VM families — check `az vm list-skus --location <region> --all` before guessing sizes
@@ -56,4 +56,4 @@ terraform destroy   # when done - the code is the real thing, resources are disp
 
 ## Roadmap
 
-Done: Linux VM in the `web` subnet, remote state in Azure Storage with locking. Next up: a SQL database on the `database` subnet (accepting traffic from `web` only), then modules and environments, Key Vault/RBAC, and CI/CD.
+Done: Linux VM in the `web` subnet, remote state in Azure Storage with locking, reusable module stamping out dev and prod environments. Next up: a SQL database on the `database` subnet, then security hardening (Key Vault, NSG restrictions, RBAC), and a GitHub Actions CI/CD pipeline.
