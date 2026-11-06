@@ -28,6 +28,7 @@ module "dev" {
   web_subnet_cidr = "10.0.1.0/24"
   db_subnet_cidr  = "10.0.2.0/24"
   vm_size         = "Standard_D2als_v7"
+  sql_admin_password = var.sql_admin_password
 }
 
 module "prod" {
@@ -38,4 +39,5 @@ module "prod" {
   web_subnet_cidr = "10.1.1.0/24"
   db_subnet_cidr  = "10.1.2.0/24"
   vm_size         = "Standard_D2als_v7"
+  sql_admin_password = var.sql_admin_password
 }

@@ -97,3 +97,31 @@ resource "azurerm_linux_virtual_machine" "main" {
     version   = "latest"
   }
 }
+
+resource "azurerm_mssql_server" "main" {
+  name                         = "sql-terraform-learning-${var.environment}"
+  resource_group_name          = azurerm_resource_group.main.name
+  location                     = var.sql_location
+  version                      = "12.0"
+  administrator_login          = "sqladmin"
+  administrator_login_password = var.sql_admin_password
+  
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "azurerm_mssql_database" "main" {
+  name                = "sqldb-${var.environment}"
+  server_id         = azurerm_mssql_server.main.id
+  sku_name            = "basic"
+}
+
+resource "azurerm_mssql_firewall_rule" "allow_azure_services" {
+  name                = "AllowAzureServices"
+  server_id           = azurerm_mssql_server.main.id
+  start_ip_address    = "0.0.0.0"
+  end_ip_address      = "0.0.0.0"
+}

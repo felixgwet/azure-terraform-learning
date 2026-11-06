@@ -15,3 +15,8 @@ variable "environment" {
   default     = "learning"
   description = "Environment tag value (learning, dev, prod...)"
 }
+variable "sql_admin_password" {
+  type        = string
+  sensitive = true
+  description = "The password for the SQL Server administrator"
+}
