@@ -13,6 +13,7 @@ Hands-on learning project: building a complete Azure environment with Terraform 
   - Ubuntu 24.04 VM in the `web` subnet, with its supporting pile: public IP, network interface, network security group (SSH/22 only), NIC/NSG association
   - SSH key auth only (`ed25519`), password login disabled
 - **Remote state** — `terraform.tfstate` lives in Azure Storage (`backend "azurerm"`) with blob lease locking, migrated from local state
+- **Azure SQL per environment** (`azurerm_mssql_server` + `azurerm_mssql_database`, Basic tier) with an Azure-services-only firewall rule; admin password injected via a sensitive variable from a gitignored tfvars file; SQL lives in France Central (trial sub blocks SQL provisioning in UK regions)
 - **Outputs** printing the dev and prod VM public IPs after apply
 
 ## File layout
@@ -56,4 +57,4 @@ terraform destroy   # when done - the code is the real thing, resources are disp
 
 ## Roadmap
 
-Done: Linux VM in the `web` subnet, remote state in Azure Storage with locking, reusable module stamping out dev and prod environments. Next up: a SQL database on the `database` subnet, then security hardening (Key Vault, NSG restrictions, RBAC), and a GitHub Actions CI/CD pipeline.
+Done: Linux VM in the `web` subnet, remote state in Azure Storage with locking, reusable module stamping out dev and prod environments, Azure SQL database per environment with secrets kept out of git. Next up: security hardening (Key Vault, NSG restrictions, RBAC), then a GitHub Actions CI/CD pipeline.

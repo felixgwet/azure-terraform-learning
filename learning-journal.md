@@ -630,3 +630,78 @@ One thing the portal taught me: portal rows are not Terraform resources. Six row
 Tonight I learned modules. A module is just a folder of .tf files with inputs (variables.tf) and outputs (outputs.tf), and main.tf is the blueprint itself. Writing the code does nothing, only apply builds. The win: dev and prod now come from one design, so they can never drift apart, because they are stamped from the same cutter. Six dials control everything: name, location, VM size, and three address ranges. Adding a third environment like staging would take 8 lines and 30 seconds now, not an evening. We will try that later. And my favourite part was the debugging: each time the count was wrong, the plan number itself was the clue, because Terraform counts every resource in every .tf file, so a wrong number always tells you something true about what is really in play.
 
 That is roadmap item 6 done. Remaining: the SQL database on the database street, tightening that port 22 rule down to my home IP (promised back in lesson 10), the rest of item 7 governance (tags are in already, Key Vault and RBAC to go), and item 8, running Terraform from a pipeline.
+
+## Lesson 7: adding SQL (and everything that went wrong first)
+
+Tonight I added a database to the module. The code took ten minutes. Everything around the code took two hours, and honestly that's where the learning was.
+
+### Secrets first
+
+A database needs an admin password, and passwords must never touch GitHub. That's when I actually sat down and understood `.gitignore`. Git uploads your whole folder on push, every file, no picking and choosing. So `.gitignore` is the do-not-upload list: one plain text file in the root of the project folder listing what git should pretend doesn't exist.
+
+I created mine in the project root:
+
+```
+# Local secrets - never upload
+*.tfvars
+
+# Terraform working files
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+```
+
+What each line protects:
+
+- `*.tfvars` — my terraform.tfvars holds the actual SQL password. The code just says "a password goes here". The real value stays on my laptop.
+- `*.tfstate` — the state notebook, which stores passwords and IDs in plain text. Mine lives in Azure anyway, so it never needs uploading.
+- `.terraform/` — 100MB+ of downloaded plugin files. Junk, re-downloadable with terraform init.
+
+The pattern that clicked: the code is public, the secrets are local, and .gitignore is the guard at the door making sure the two never mix.
+
+Useful command learned: `git ls-files` lists everything git is tracking in a repo. That's how you check nothing sensitive slipped in.
+
+### The password plumbing
+
+The password travels a chain: terraform.tfvars -> root variable -> module dial -> the SQL server. The module variable has `sensitive = true`, which means Terraform never prints it in plans, outputs or logs — it shows as `(sensitive value)`. The value exists, it just never flashes on screen.
+
+Also learned: a variable with no `default` is mandatory — the caller must supply it. That's why the plan later failed with "Missing required argument: sql_admin_password". The module demanded the password but my root main.tf wasn't passing it in. One missing link in the chain = that error.
+
+### Trap 1: dead resource names
+
+I went looking at example code online and found `azurerm_sql_server` and `azurerm_sql_database`. Why not use those? Because they're the retired names, removed in azurerm provider 4.0. I'm on 5.x. The current ones are `azurerm_mssql_*`. Real lesson: always check what provider version a tutorial was written for. Old tutorials are full of dead resource names.
+
+### Trap 2: the firewall rule that nearly opened my database to the planet
+
+The firewall rule I found online had `start_ip_address = "0.0.0.0"` and `end_ip_address = "255.255.255.255"`. Looks sensible. It's actually the most dangerous line I've nearly applied — that range means every IP address on Earth can reach the database, protected by one password. The correct "Azure services only" rule is 0.0.0.0 to 0.0.0.0, which is Azure's weird special case. The tight-looking one was the dangerous one. If I'd applied that, bots would have found the database within minutes.
+
+Asking "wait, is this right?" before pasting is not slowing down. That IS the job.
+
+### The error run (what each one actually meant)
+
+**"Missing required argument"** — the chain gap above. Fixed by passing `sql_admin_password = var.sql_admin_password` inside both module blocks.
+
+**Plan said 24, not 6.** My heart sank. Then the maths: 18 is the two full environments being rebuilt from zero (I destroy everything between lessons), plus 6 new SQL resources across dev and prod. 18 + 6 = 24. Once again the plan number was telling the truth; I just had to think about what it was counting.
+
+**409 MissingSubscriptionRegistration, namespace Microsoft.Sql.** Seen this beast before — lesson 4, with Compute and Network. Same error code + different namespace = same fix, new switch: `az provider register --namespace Microsoft.Sql`. Every new Azure service family needs its provider registered once per subscription. Second time I've diagnosed this one.
+
+**ProvisioningDisabled.** New wall. My trial subscription isn't allowed to create SQL servers in ukwest at all. This is where I stopped guessing: a logical SQL server with no database costs nothing, so I used it as a probe — `az sql server create` in a throwaway resource group, region by region, then deleted everything. Results: ukwest, uksouth, westeurope, northeurope, eastus and westus are all blocked for my trial. francecentral and swedencentral accept SQL. So SQL gets its own dial, `sql_location`, default francecentral. Everything else stays ukwest; region is a per-resource choice, not a project-wide law.
+
+**InvalidResourceLocation — the ghost servers.** The first failed apply registered the server names in ukwest before the restriction slapped them down. Azure then refused to create the same name in a new region: "already exists in location ukwest". A failed apply can leave ghost registrations behind — the name is taken even though nothing usable exists. Fix: `az sql server list -g rg-dev` to hunt them, `az sql server delete` to clear them, then apply again.
+
+### Hardcoding vs defaults (the question I had to argue with myself)
+
+Is putting `default = "francecentral"` in variables.tf just hardcoding? No. Hardcoding is the value welded inside the resource block, where changing it means surgery on the blueprint. A default lives at the dial's definition — one line, clearly labelled, overridable per environment. The blueprint never mentions France; it just says "whatever the dial says". Blueprints contain dials, not answers.
+
+### Small stuff picked up along the way
+
+- Every `var.something` needs a matching `variable "something"` declared in the same module. Reference without declaration = red squiggle.
+- Descriptions are free text for humans. Azure never sees them.
+- I had `description = "dev"` on the environment variable — I was using the description as the value. The value comes from the module call; the description is just a note.
+- Blue squiggles in VS Code are usually just the spell checker (it hates the word CIDR). Red is a real error. Hover tells you who's complaining.
+- Resource labels vs names: the label is for Terraform's internal references, the `name` is what Azure sees. Both are my choice; only the values are dictated.
+
+### Where I am now
+
+Dev and prod each get their own SQL server (France Central), Basic-tier database and firewall rule, stamped from the same module, passwords kept out of GitHub. Next lesson is security: locking that firewall down properly and moving the password into Key Vault.
