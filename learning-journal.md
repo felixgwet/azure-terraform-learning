@@ -705,3 +705,52 @@ Is putting `default = "francecentral"` in variables.tf just hardcoding? No. Hard
 ### Where I am now
 
 Dev and prod each get their own SQL server (France Central), Basic-tier database and firewall rule, stamped from the same module, passwords kept out of GitHub. Next lesson is security: locking that firewall down properly and moving the password into Key Vault.
+
+## Lesson 7 continued - the error storm (and how I got out of it)
+
+The second half of tonight was not building. It was debugging a chain of failures, each one teaching me something the tutorials never mention.
+
+### PasswordNotComplex
+
+First wall: my SQL admin password failed policy. Azure SQL needs 8 to 128 characters and at least 3 of these 4: uppercase, lowercase, number, symbol. And it can't contain the username (sqladmin). Fixed it in terraform.tfvars, which stays on my laptop thanks to .gitignore.
+
+### I accidentally moved my entire infrastructure to France
+
+While adding the sql_location dial, I changed the wrong variable. I edited the main `location` instead of just `sql_location`. Location is a ForceNew property - Azure cannot edit it in place - so Terraform destroyed both entire environments and rebuilt them in France Central. The plan had told me (the summary line said destroy, and replacements show as -/+), and I typed yes without reading. That's a scar I'll keep. Read the plan. Every time.
+
+Silver lining: I probed first with `az vm list-skus` and confirmed my VM size works in France Central (the restriction was Zone-type, not Location-type), so I committed to the move on purpose. Everything in one region is actually the nicer design.
+
+### "Provider produced inconsistent result" and the orphans
+
+Mid-apply, Azure said "created!" for my NSG and public IP, then immediately forgot they existed. Replication lag. Terraform crashed out - and here's the nasty part - those resources were real in Azure but never written into the state notebook. Next apply: "already exists, needs to be imported."
+
+That's when I learned there are two recovery patterns:
+
+- Production: import the orphans into state, one by one. Slow, careful, nothing lost.
+- Lab: nuke the resource groups entirely (`az group delete -n rg-dev --yes`) and rebuild from code. The code is the truth - that's the whole point of IaC.
+
+I nuked. Clean slate, fresh apply.
+
+### The 20-minute stall and the zombie request
+
+Then the dev SQL server sat on "Still creating..." for 20 minutes. I checked Azure directly with `az sql server list -g rg-dev` - nothing there. A stall, not slowness. So I Ctrl+C'd.
+
+Except Ctrl+C only stops Terraform from watching. The kitchen keeps cooking. My next apply hit `UpsertLogicalServerRequestAlreadyInProgress` - the original request was still alive server-side. Cancelling in Terraform does not cancel in Azure.
+
+Then I made it worse by jumping the gun: ran terraform import before the server actually existed and got "Cannot import non-existent remote object". Import is an adoption, not a conjuring. The object must exist in Azure first.
+
+### What actually fixed it
+
+Patience, in the end. Polled `az sql server list` every few minutes, let the zombie request finish, then re-imported and applied. Everything converged. Both environments, both SQL servers, done.
+
+### New tools in my kit
+
+- The Portal's **Activity Log** on any resource - it shows every operation, failed or succeeded, with timestamps. Tonight I watched my own failure turn into a success there.
+- `az vm list-skus --location X` to probe before committing to a region
+- A free logical SQL server (no database) as a free region probe
+- `terraform import` - and when NOT to run it
+- The difference between cancelling the watcher and cancelling the work
+
+### The one-paragraph version for interviews
+
+My trial subscription fought me at every step - region locks, provisioning stalls, replication lag - and I worked through it with region probing, state surgery, imports, and knowing when to nuke a lab and rebuild from code. The errors were the curriculum.
