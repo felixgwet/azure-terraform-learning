@@ -49,7 +49,7 @@ resource "azurerm_network_security_group" "web" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
-    source_address_prefix      = "*"
+    source_address_prefix      = "${var.allowed_ssh_ip}/32"
     destination_address_prefix = "*"
   }
 }
@@ -124,4 +124,30 @@ resource "azurerm_mssql_firewall_rule" "allow_azure_services" {
   server_id           = azurerm_mssql_server.main.id
   start_ip_address    = "0.0.0.0"
   end_ip_address      = "0.0.0.0"
+}
+
+data "azurerm_client_config" "current" {}
+
+resource "azurerm_key_vault" "main" {
+  name                       = "kv-felixgwet-${var.environment}"
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
+  soft_delete_retention_days = 7
+  purge_protection_enabled   = false
+}
+
+resource "azurerm_role_assignment" "admin_kv" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets Officer"
+  principal_id         = data.azurerm_client_config.current.object_id
+}
+
+resource "azurerm_key_vault_secret" "sql_password" {
+  name         = "sql-admin-password"
+  value        = var.sql_admin_password
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.admin_kv]
 }

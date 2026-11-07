@@ -6,7 +6,7 @@ variable "environment" {
 variable "location" {
   type    = string
   description = "Azure region to deploy resources in"
-  default = "ukwest"
+  default = "francecentral"
 }
 
 variable "vm_size" {
@@ -45,5 +45,10 @@ variable "sql_admin_password" {
 variable "sql_location" {
   type        = string
   description = "Region for SQL - trials can't provision SQL in ukwest"
-  default     = "uksouth"
+  default     = "francecentral"
+}
+
+variable "allowed_ssh_ip" {
+  type        = string
+  description = "The IP address allowed to SSH into the VM"
 }

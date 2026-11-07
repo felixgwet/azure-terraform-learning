@@ -29,6 +29,7 @@ module "dev" {
   db_subnet_cidr  = "10.0.2.0/24"
   vm_size         = "Standard_D2als_v7"
   sql_admin_password = var.sql_admin_password
+  allowed_ssh_ip = var.allowed_ssh_ip
 }
 
 module "prod" {
@@ -40,4 +41,5 @@ module "prod" {
   db_subnet_cidr  = "10.1.2.0/24"
   vm_size         = "Standard_D2als_v7"
   sql_admin_password = var.sql_admin_password
+  allowed_ssh_ip = var.allowed_ssh_ip
 }

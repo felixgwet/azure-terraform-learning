@@ -20,3 +20,7 @@ variable "sql_admin_password" {
   sensitive = true
   description = "The password for the SQL Server administrator"
 }
+variable "allowed_ssh_ip" {
+  type        = string
+  description = "The IP address allowed to SSH into the VM"
+}
