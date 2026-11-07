@@ -11,6 +11,7 @@ permissions:
 env:
   TF_VAR_sql_admin_password: ${{ secrets.TF_VAR_sql_admin_password }}
   TF_VAR_allowed_ssh_ip: ${{ secrets.TF_VAR_allowed_ssh_ip }}
+  TF_VAR_ssh_public_key: ${{ secrets.TF_VAR_ssh_public_key }}
 
 jobs:
   terraform:
