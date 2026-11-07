@@ -30,6 +30,7 @@ module "dev" {
   vm_size         = "Standard_D2als_v7"
   sql_admin_password = var.sql_admin_password
   allowed_ssh_ip = var.allowed_ssh_ip
+  ssh_public_key = var.ssh_public_key
 }
 
 module "prod" {
@@ -42,4 +43,5 @@ module "prod" {
   vm_size         = "Standard_D2als_v7"
   sql_admin_password = var.sql_admin_password
   allowed_ssh_ip = var.allowed_ssh_ip
+  ssh_public_key = var.ssh_public_key
 }

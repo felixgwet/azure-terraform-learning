@@ -52,3 +52,7 @@ variable "allowed_ssh_ip" {
   type        = string
   description = "The IP address allowed to SSH into the VM"
 }
+variable "ssh_public_key" {
+  type        = string
+  description = "Public SSH key for VM admin login"
+}
